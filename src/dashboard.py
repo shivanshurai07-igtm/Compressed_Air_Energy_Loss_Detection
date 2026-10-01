@@ -8,7 +8,7 @@ import pandas as pd
 
 
 # =========================================================
-# PAGE CONFIG
+# PAGE CONFIGURATION
 # =========================================================
 
 st.set_page_config(
@@ -19,7 +19,7 @@ st.set_page_config(
 
 
 # =========================================================
-# MQTT SETTINGS
+# MQTT CONFIGURATION
 # =========================================================
 
 MQTT_TOPIC = "compressed_air/data"
@@ -32,7 +32,7 @@ MQTT_TOPIC = "compressed_air/data"
 @st.cache_resource
 def start_mqtt():
 
-    data = {
+    data_store = {
         "readings": deque(maxlen=100),
         "connected": False,
         "lock": threading.Lock()
@@ -42,11 +42,17 @@ def start_mqtt():
     # MQTT CONNECT
     # -----------------------------------------------------
 
-    def on_connect(client, userdata, flags, reason_code, properties=None):
+    def on_connect(
+        client,
+        userdata,
+        flags,
+        reason_code,
+        properties=None
+    ):
 
         if reason_code == 0:
 
-            data["connected"] = True
+            data_store["connected"] = True
 
             client.subscribe(MQTT_TOPIC)
 
@@ -55,13 +61,12 @@ def start_mqtt():
 
         else:
 
-            data["connected"] = False
+            data_store["connected"] = False
 
             print(
                 "MQTT connection failed:",
                 reason_code
             )
-
 
     # -----------------------------------------------------
     # MQTT DISCONNECT
@@ -75,16 +80,19 @@ def start_mqtt():
         properties=None
     ):
 
-        data["connected"] = False
+        data_store["connected"] = False
 
-        print("Disconnected from HiveMQ")
-
+        print("Disconnected from HiveMQ Cloud")
 
     # -----------------------------------------------------
     # MQTT MESSAGE
     # -----------------------------------------------------
 
-    def on_message(client, userdata, message):
+    def on_message(
+        client,
+        userdata,
+        message
+    ):
 
         try:
 
@@ -92,9 +100,11 @@ def start_mqtt():
                 message.payload.decode("utf-8")
             )
 
-            with data["lock"]:
+            with data_store["lock"]:
 
-                data["readings"].append(payload)
+                data_store["readings"].append(
+                    payload
+                )
 
         except Exception as e:
 
@@ -103,9 +113,8 @@ def start_mqtt():
                 e
             )
 
-
     # -----------------------------------------------------
-    # GET STREAMLIT SECRETS
+    # STREAMLIT SECRETS
     # -----------------------------------------------------
 
     broker = st.secrets["MQTT_BROKER"]
@@ -121,9 +130,8 @@ def start_mqtt():
 
     password = st.secrets["MQTT_PASSWORD"]
 
-
     # -----------------------------------------------------
-    # CREATE CLIENT
+    # MQTT CLIENT
     # -----------------------------------------------------
 
     client = mqtt.Client(
@@ -131,12 +139,10 @@ def start_mqtt():
         client_id="cloud-compressed-air-dashboard"
     )
 
-
     client.username_pw_set(
         username,
         password
     )
-
 
     # -----------------------------------------------------
     # TLS
@@ -146,7 +152,6 @@ def start_mqtt():
         cert_reqs=ssl.CERT_REQUIRED,
         tls_version=ssl.PROTOCOL_TLS_CLIENT
     )
-
 
     # -----------------------------------------------------
     # CALLBACKS
@@ -158,9 +163,8 @@ def start_mqtt():
 
     client.on_message = on_message
 
-
     # -----------------------------------------------------
-    # CONNECT TO HIVEMQ
+    # CONNECT
     # -----------------------------------------------------
 
     try:
@@ -175,15 +179,14 @@ def start_mqtt():
 
     except Exception as e:
 
-        data["connected"] = False
+        data_store["connected"] = False
 
         print(
             "MQTT connection error:",
             e
         )
 
-
-    return data
+    return data_store
 
 
 # =========================================================
@@ -201,22 +204,22 @@ st.markdown(
     """
     <div style="
         width:100%;
-        padding:25px 30px;
+        box-sizing:border-box;
+        padding:24px 28px;
         border-radius:16px;
-        background:
-            linear-gradient(
-                135deg,
-                #102832 0%,
-                #0b1c24 55%,
-                #0b171d 100%
-            );
-        color:white;
-        border:1px solid rgba(80,190,220,0.20);
+        background:linear-gradient(
+            135deg,
+            #102832 0%,
+            #0b1c24 55%,
+            #0b171d 100%
+        );
+        border:1px solid rgba(80,190,220,0.25);
         box-shadow:0 8px 25px rgba(0,0,0,0.20);
         margin-bottom:20px;
     ">
 
         <div style="
+            color:white;
             font-size:26px;
             font-weight:700;
             letter-spacing:1px;
@@ -246,14 +249,14 @@ st.markdown(
 
 
 # =========================================================
-# LIVE DASHBOARD FRAGMENT
+# LIVE DASHBOARD
 # =========================================================
 
 @st.fragment(run_every="3s")
 def live_dashboard():
 
     # -----------------------------------------------------
-    # COPY CURRENT READINGS
+    # GET CURRENT READINGS
     # -----------------------------------------------------
 
     with mqtt_data["lock"]:
@@ -261,7 +264,6 @@ def live_dashboard():
         readings = list(
             mqtt_data["readings"]
         )
-
 
     # -----------------------------------------------------
     # CONNECTION STATUS
@@ -279,7 +281,6 @@ def live_dashboard():
             "🔴 MQTT CONNECTION LOST"
         )
 
-
     # -----------------------------------------------------
     # WAITING FOR DATA
     # -----------------------------------------------------
@@ -293,22 +294,19 @@ def live_dashboard():
 
         return
 
-
     # -----------------------------------------------------
-    # CREATE DATAFRAME
+    # DATAFRAME
     # -----------------------------------------------------
 
     df = pd.DataFrame(
         readings
     )
 
-
     # -----------------------------------------------------
     # REQUIRED COLUMNS
     # -----------------------------------------------------
 
     required_columns = [
-
         "timestamp",
         "pressure_bar",
         "flow_rate_lpm",
@@ -316,16 +314,13 @@ def live_dashboard():
         "power_kw",
         "energy_loss_percent",
         "status"
-
     ]
-
 
     for column in required_columns:
 
         if column not in df.columns:
 
             df[column] = 0
-
 
     # -----------------------------------------------------
     # TIMESTAMP
@@ -336,23 +331,19 @@ def live_dashboard():
         errors="coerce"
     )
 
-
     df = df.dropna(
         subset=["timestamp"]
     )
 
-
     df = df.sort_values(
         "timestamp"
     )
-
 
     # -----------------------------------------------------
     # LATEST READING
     # -----------------------------------------------------
 
     latest = df.iloc[-1]
-
 
     pressure = float(
         latest["pressure_bar"]
@@ -380,7 +371,6 @@ def live_dashboard():
 
     timestamp = latest["timestamp"]
 
-
     # =====================================================
     # ALERT
     # =====================================================
@@ -404,18 +394,15 @@ def live_dashboard():
             "✅ SYSTEM NORMAL"
         )
 
-
     # =====================================================
-    # LIVE PARAMETERS
+    # LIVE SYSTEM PARAMETERS
     # =====================================================
 
     st.subheader(
         "📊 Live System Parameters"
     )
 
-
     col1, col2, col3, col4 = st.columns(4)
-
 
     with col1:
 
@@ -424,14 +411,12 @@ def live_dashboard():
             f"{pressure:.2f} bar"
         )
 
-
     with col2:
 
         st.metric(
             "Air Flow",
             f"{flow:.2f} L/min"
         )
-
 
     with col3:
 
@@ -440,14 +425,12 @@ def live_dashboard():
             f"{energy_loss:.2f}%"
         )
 
-
     with col4:
 
         st.metric(
             "System Status",
             status
         )
-
 
     # =====================================================
     # MACHINE PARAMETERS
@@ -457,9 +440,7 @@ def live_dashboard():
         "⚙️ Machine Parameters"
     )
 
-
     col1, col2, col3 = st.columns(3)
-
 
     with col1:
 
@@ -468,7 +449,6 @@ def live_dashboard():
             f"{temperature:.2f} °C"
         )
 
-
     with col2:
 
         st.metric(
@@ -476,14 +456,12 @@ def live_dashboard():
             f"{power:.2f} kW"
         )
 
-
     with col3:
 
         st.metric(
             "Live Readings",
             len(df)
         )
-
 
     # =====================================================
     # LAST UPDATE
@@ -494,9 +472,7 @@ def live_dashboard():
         f"{timestamp.strftime('%Y-%m-%d %H:%M:%S')}"
     )
 
-
     st.divider()
-
 
     # =====================================================
     # CHART DATA
@@ -506,7 +482,6 @@ def live_dashboard():
         "timestamp"
     )
 
-
     # =====================================================
     # ENERGY LOSS
     # =====================================================
@@ -515,12 +490,10 @@ def live_dashboard():
         "📊 Energy Loss Trend"
     )
 
-
     st.line_chart(
         chart_df["energy_loss_percent"],
         y_label="Energy Loss (%)"
     )
-
 
     # =====================================================
     # PRESSURE
@@ -530,12 +503,10 @@ def live_dashboard():
         "💨 Pressure Trend"
     )
 
-
     st.line_chart(
         chart_df["pressure_bar"],
         y_label="Pressure (bar)"
     )
-
 
     # =====================================================
     # AIR FLOW
@@ -545,12 +516,10 @@ def live_dashboard():
         "🌊 Air Flow Trend"
     )
 
-
     st.line_chart(
         chart_df["flow_rate_lpm"],
         y_label="Air Flow (L/min)"
     )
-
 
     # =====================================================
     # TEMPERATURE
@@ -560,12 +529,10 @@ def live_dashboard():
         "🌡️ Temperature Trend"
     )
 
-
     st.line_chart(
         chart_df["temperature_c"],
         y_label="Temperature (°C)"
     )
-
 
     # =====================================================
     # POWER
@@ -575,12 +542,10 @@ def live_dashboard():
         "⚡ Power Consumption"
     )
 
-
     st.line_chart(
         chart_df["power_kw"],
         y_label="Power (kW)"
     )
-
 
     # =====================================================
     # RECENT READINGS
@@ -588,16 +553,13 @@ def live_dashboard():
 
     st.divider()
 
-
     st.subheader(
         "🗃️ Recent Sensor Readings"
     )
 
-
     display_df = df.tail(
         10
     ).copy()
-
 
     display_df = display_df[
         [
@@ -611,9 +573,7 @@ def live_dashboard():
         ]
     ]
 
-
     display_df.columns = [
-
         "Timestamp",
         "Pressure (bar)",
         "Air Flow (L/min)",
@@ -621,9 +581,7 @@ def live_dashboard():
         "Power (kW)",
         "Energy Loss (%)",
         "Status"
-
     ]
-
 
     st.dataframe(
         display_df.iloc[::-1],
@@ -631,18 +589,15 @@ def live_dashboard():
         hide_index=True
     )
 
-
     # =====================================================
-    # ARCHITECTURE
+    # CLOUD ARCHITECTURE
     # =====================================================
 
     st.divider()
 
-
     st.subheader(
         "🔗 Cloud System Architecture"
     )
-
 
     st.code(
         """
@@ -660,7 +615,6 @@ Energy Loss Detection
         """,
         language="text"
     )
-
 
     st.caption(
         "Compressed Air Energy Loss Detection System | Cloud Dashboard"
