@@ -23,6 +23,7 @@ st.set_page_config(
 # =========================================================
 
 MQTT_TOPIC = "compressed_air/data"
+ML_TOPIC = "compressed_air/ml_prediction"
 
 
 # =========================================================
@@ -34,6 +35,7 @@ def start_mqtt():
 
     data_store = {
         "readings": deque(maxlen=100),
+        "ml_prediction": None,
         "connected": False,
         "lock": threading.Lock()
     }
@@ -55,9 +57,11 @@ def start_mqtt():
             data_store["connected"] = True
 
             client.subscribe(MQTT_TOPIC)
+            client.subscribe(ML_TOPIC)
 
             print("Connected to HiveMQ Cloud")
             print("Subscribed to:", MQTT_TOPIC)
+            print("Subscribed to:", ML_TOPIC)
 
         else:
 
@@ -102,9 +106,22 @@ def start_mqtt():
 
             with data_store["lock"]:
 
-                data_store["readings"].append(
-                    payload
-                )
+                # Normal sensor data
+                if message.topic == MQTT_TOPIC:
+
+                    data_store["readings"].append(
+                        payload
+                    )
+
+                # AI / ML prediction
+                elif message.topic == ML_TOPIC:
+
+                    data_store["ml_prediction"] = payload
+
+                    print(
+                        "AI Prediction received:",
+                        payload
+                    )
 
         except Exception as e:
 
@@ -158,9 +175,7 @@ def start_mqtt():
     # -----------------------------------------------------
 
     client.on_connect = on_connect
-
     client.on_disconnect = on_disconnect
-
     client.on_message = on_message
 
     # -----------------------------------------------------
@@ -199,10 +214,6 @@ mqtt_data = start_mqtt()
 # =========================================================
 # HEADER
 # =========================================================
-
-# IMPORTANT:
-# st.html() is used here instead of st.markdown()
-# so HTML is rendered as HTML and not shown as code.
 
 st.html("""
 <div style="
@@ -261,6 +272,8 @@ def live_dashboard():
         readings = list(
             mqtt_data["readings"]
         )
+
+        ml_prediction = mqtt_data["ml_prediction"]
 
     # -----------------------------------------------------
     # CONNECTION STATUS
@@ -336,10 +349,6 @@ def live_dashboard():
         "timestamp"
     )
 
-    # -----------------------------------------------------
-    # CHECK DATA
-    # -----------------------------------------------------
-
     if df.empty:
 
         st.warning(
@@ -379,6 +388,83 @@ def live_dashboard():
     )
 
     timestamp = latest["timestamp"]
+
+    # =====================================================
+    # AI / ML PREDICTION
+    # =====================================================
+
+    st.divider()
+
+    st.subheader(
+        "🤖 AI / ML Analysis"
+    )
+
+    if ml_prediction:
+
+        prediction = ml_prediction.get(
+            "prediction",
+            "N/A"
+        )
+
+        confidence = ml_prediction.get(
+            "confidence_percent",
+            0
+        )
+
+        leakage_risk = ml_prediction.get(
+            "leakage_risk",
+            "N/A"
+        )
+
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+
+            st.metric(
+                "AI Prediction",
+                str(prediction)
+            )
+
+        with col2:
+
+            st.metric(
+                "Confidence",
+                f"{confidence}%"
+            )
+
+        with col3:
+
+            st.metric(
+                "Leakage Risk",
+                str(leakage_risk)
+            )
+
+        # AI status message
+
+        if prediction == "HIGH LOSS":
+
+            st.error(
+                "🚨 AI DETECTED HIGH ENERGY LOSS / "
+                "POSSIBLE AIR LEAKAGE"
+            )
+
+        elif prediction == "WARNING":
+
+            st.warning(
+                "⚠️ AI DETECTED WARNING CONDITION"
+            )
+
+        elif prediction == "NORMAL":
+
+            st.success(
+                "✅ AI PREDICTION: SYSTEM NORMAL"
+            )
+
+    else:
+
+        st.info(
+            "🤖 Waiting for AI/ML prediction..."
+        )
 
     # =====================================================
     # ALERT
@@ -616,11 +702,15 @@ MQTT Publisher
       ↓
 HiveMQ Cloud
       ↓
-Streamlit Cloud
-      ↓
-Live Monitoring Dashboard
-      ↓
-Energy Loss Detection
+      ├──────────────→ Node-RED
+      │                   ↓
+      │             Industrial Dashboard
+      │
+      └──────────────→ Streamlit Cloud
+                          ↓
+                    Cloud Dashboard
+                          ↓
+                    AI/ML Analysis
         """,
         language="text"
     )
