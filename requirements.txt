@@ -1,6 +1,7 @@
-streamlit
 paho-mqtt==2.1.0
 python-dotenv
 pandas
 scikit-learn
 joblib
+streamlit
+plotly
