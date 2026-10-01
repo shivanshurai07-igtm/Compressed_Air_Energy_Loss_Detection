@@ -1,0 +1,14 @@
+__pycache__/
+*.py[cod]
+*.pyo
+
+venv/
+.venv/
+env/
+
+.env
+
+compressed_air.db
+
+*.log
+.DS_Store
