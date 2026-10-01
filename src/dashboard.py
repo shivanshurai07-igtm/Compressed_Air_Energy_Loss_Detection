@@ -200,52 +200,49 @@ mqtt_data = start_mqtt()
 # HEADER
 # =========================================================
 
-st.markdown(
-    """
+# IMPORTANT:
+# st.html() is used here instead of st.markdown()
+# so HTML is rendered as HTML and not shown as code.
+
+st.html("""
+<div style="
+    width:100%;
+    box-sizing:border-box;
+    padding:24px 28px;
+    border-radius:16px;
+    background:linear-gradient(
+        135deg,
+        #102832 0%,
+        #0b1c24 55%,
+        #0b171d 100%
+    );
+    border:1px solid rgba(80,190,220,0.25);
+    box-shadow:0 8px 25px rgba(0,0,0,0.20);
+    margin-bottom:20px;
+">
+
     <div style="
-        width:100%;
-        box-sizing:border-box;
-        padding:24px 28px;
-        border-radius:16px;
-        background:linear-gradient(
-            135deg,
-            #102832 0%,
-            #0b1c24 55%,
-            #0b171d 100%
-        );
-        border:1px solid rgba(80,190,220,0.25);
-        box-shadow:0 8px 25px rgba(0,0,0,0.20);
-        margin-bottom:20px;
+        color:white;
+        font-size:26px;
+        font-weight:700;
+        letter-spacing:1px;
     ">
-
-        <div style="
-            color:white;
-            font-size:26px;
-            font-weight:700;
-            letter-spacing:1px;
-        ">
-
-            💨 COMPRESSED AIR
-            <span style="color:#43c4e5;">
-                ENERGY INTELLIGENCE
-            </span>
-
-        </div>
-
-        <div style="
-            margin-top:7px;
-            color:#9bb1ba;
-            font-size:13px;
-        ">
-
-            Real-Time Energy Loss Monitoring & Detection
-
-        </div>
-
+        💨 COMPRESSED AIR
+        <span style="color:#43c4e5;">
+            ENERGY INTELLIGENCE
+        </span>
     </div>
-    """,
-    unsafe_allow_html=True
-)
+
+    <div style="
+        margin-top:7px;
+        color:#9bb1ba;
+        font-size:13px;
+    ">
+        Real-Time Energy Loss Monitoring & Detection
+    </div>
+
+</div>
+""")
 
 
 # =========================================================
@@ -338,6 +335,18 @@ def live_dashboard():
     df = df.sort_values(
         "timestamp"
     )
+
+    # -----------------------------------------------------
+    # CHECK DATA
+    # -----------------------------------------------------
+
+    if df.empty:
+
+        st.warning(
+            "No valid sensor data received."
+        )
+
+        return
 
     # -----------------------------------------------------
     # LATEST READING
