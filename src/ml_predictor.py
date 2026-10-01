@@ -1,6 +1,7 @@
 import json
 import ssl
 import os
+import time
 
 import joblib
 import pandas as pd
@@ -8,11 +9,16 @@ import paho.mqtt.client as mqtt
 from dotenv import load_dotenv
 
 
-# ==========================================
+# =========================================================
 # LOAD ENVIRONMENT VARIABLES
-# ==========================================
+# =========================================================
 
 load_dotenv()
+
+
+# =========================================================
+# MQTT CONFIGURATION
+# =========================================================
 
 MQTT_BROKER = os.getenv("MQTT_BROKER")
 MQTT_PORT = int(os.getenv("MQTT_PORT", "8883"))
@@ -22,86 +28,157 @@ MQTT_PASSWORD = os.getenv("MQTT_PASSWORD")
 INPUT_TOPIC = "compressed_air/data"
 OUTPUT_TOPIC = "compressed_air/ml_prediction"
 
-MODEL_FILE = "energy_loss_model.pkl"
+
+# =========================================================
+# MODEL
+# =========================================================
+
+MODEL_PATH = "energy_loss_model.pkl"
+
+model = joblib.load(MODEL_PATH)
+
+print("AI model loaded successfully.")
 
 
-# ==========================================
-# CHECK CREDENTIALS
-# ==========================================
+# =========================================================
+# CHECK MQTT CREDENTIALS
+# =========================================================
 
 if not MQTT_BROKER:
-    raise ValueError("MQTT_BROKER is missing in .env")
+    raise ValueError("MQTT_BROKER missing in .env")
 
 if not MQTT_USERNAME:
-    raise ValueError("MQTT_USERNAME is missing in .env")
+    raise ValueError("MQTT_USERNAME missing in .env")
 
 if not MQTT_PASSWORD:
-    raise ValueError("MQTT_PASSWORD is missing in .env")
+    raise ValueError("MQTT_PASSWORD missing in .env")
 
 
-# ==========================================
-# LOAD AI/ML MODEL
-# ==========================================
+# =========================================================
+# MQTT CONNECT
+# =========================================================
 
-print("Loading AI/ML model...")
+def on_connect(
+    client,
+    userdata,
+    flags,
+    reason_code,
+    properties=None
+):
 
-model = joblib.load(MODEL_FILE)
+    if reason_code == 0:
 
-print("AI/ML model loaded successfully!")
-print("-" * 60)
+        print("Connected to HiveMQ Cloud")
 
+        client.subscribe(
+            INPUT_TOPIC,
+            qos=1
+        )
 
-# ==========================================
-# RECEIVE DATA
-# ==========================================
+        print(
+            "Subscribed to:",
+            INPUT_TOPIC
+        )
 
-def on_message(client, userdata, message):
+    else:
 
-    try:
-
-        data = json.loads(
-            message.payload.decode()
+        print(
+            "MQTT connection failed:",
+            reason_code
         )
 
 
-        # ==================================
-        # PREPARE FEATURES
-        # ==================================
+# =========================================================
+# MQTT DISCONNECT
+# =========================================================
+
+def on_disconnect(
+    client,
+    userdata,
+    disconnect_flags,
+    reason_code,
+    properties=None
+):
+
+    print(
+        "MQTT disconnected:",
+        reason_code
+    )
+
+
+# =========================================================
+# MESSAGE RECEIVED
+# =========================================================
+
+def on_message(
+    client,
+    userdata,
+    message
+):
+
+    try:
+
+        # -------------------------------------------------
+        # Decode MQTT message
+        # -------------------------------------------------
+
+        data = json.loads(
+            message.payload.decode("utf-8")
+        )
+
+        print("\nSensor data received:")
+        print(json.dumps(data, indent=2))
+
+
+        # -------------------------------------------------
+        # Prepare ML input
+        # -------------------------------------------------
 
         features = pd.DataFrame([{
+            "pressure_bar": float(
+                data["pressure_bar"]
+            ),
 
-            "pressure_bar":
-                data["pressure_bar"],
+            "flow_rate_lpm": float(
+                data["flow_rate_lpm"]
+            ),
 
-            "flow_rate_lpm":
-                data["flow_rate_lpm"],
+            "temperature_c": float(
+                data["temperature_c"]
+            ),
 
-            "temperature_c":
-                data["temperature_c"],
-
-            "power_kw":
+            "power_kw": float(
                 data["power_kw"]
-
+            )
         }])
 
 
-        # ==================================
-        # AI PREDICTION
-        # ==================================
+        # -------------------------------------------------
+        # AI Prediction
+        # -------------------------------------------------
 
         prediction = model.predict(
             features
         )[0]
 
 
-        probabilities = model.predict_proba(
-            features
-        )[0]
+        # -------------------------------------------------
+        # Confidence
+        # -------------------------------------------------
 
+        if hasattr(model, "predict_proba"):
 
-        confidence = max(
-            probabilities
-        ) * 100
+            probabilities = model.predict_proba(
+                features
+            )[0]
+
+            confidence = float(
+                max(probabilities) * 100
+            )
+
+        else:
+
+            confidence = 0.0
 
 
         confidence = round(
@@ -110,9 +187,9 @@ def on_message(client, userdata, message):
         )
 
 
-        # ==================================
-        # LEAKAGE RISK
-        # ==================================
+        # -------------------------------------------------
+        # Leakage Risk
+        # -------------------------------------------------
 
         if prediction == "HIGH LOSS":
 
@@ -127,201 +204,169 @@ def on_message(client, userdata, message):
             leakage_risk = "LOW"
 
 
-        # ==================================
-        # RESULT
-        # ==================================
+        # -------------------------------------------------
+        # AI RESULT
+        # -------------------------------------------------
 
         result = {
 
-            "timestamp":
-                data["timestamp"],
+            "timestamp": data.get(
+                "timestamp"
+            ),
 
-            "prediction":
-                prediction,
+            "prediction": str(
+                prediction
+            ),
 
-            "confidence_percent":
-                confidence,
+            "confidence_percent": confidence,
 
-            "leakage_risk":
-                leakage_risk,
+            "leakage_risk": leakage_risk,
 
-            "pressure_bar":
-                data["pressure_bar"],
+            "pressure_bar": data.get(
+                "pressure_bar"
+            ),
 
-            "flow_rate_lpm":
-                data["flow_rate_lpm"],
+            "flow_rate_lpm": data.get(
+                "flow_rate_lpm"
+            ),
 
-            "temperature_c":
-                data["temperature_c"],
+            "temperature_c": data.get(
+                "temperature_c"
+            ),
 
-            "power_kw":
-                data["power_kw"]
+            "power_kw": data.get(
+                "power_kw"
+            ),
 
+            "energy_loss_percent": data.get(
+                "energy_loss_percent"
+            )
         }
 
 
-        # ==================================
-        # PUBLISH ML RESULT
-        # ==================================
+        # -------------------------------------------------
+        # Publish AI Prediction
+        # -------------------------------------------------
 
-        publish_result = client.publish(
+        result_json = json.dumps(
+            result
+        )
 
+        client.publish(
             OUTPUT_TOPIC,
-
-            json.dumps(result)
-
+            result_json,
+            qos=1,
+            retain=True
         )
 
 
-        # ==================================
-        # TERMINAL OUTPUT
-        # ==================================
+        # -------------------------------------------------
+        # Console Output
+        # -------------------------------------------------
 
-        print()
-
-        print("AI/ML PREDICTION")
-
-        print("-" * 45)
+        print("\n==============================")
+        print("AI PREDICTION")
+        print("==============================")
 
         print(
-            "Prediction      :",
+            "Prediction:",
             prediction
         )
 
         print(
-            "Confidence      :",
+            "Confidence:",
             f"{confidence}%"
         )
 
         print(
-            "Leakage Risk    :",
+            "Leakage Risk:",
             leakage_risk
         )
 
         print(
-            "Pressure        :",
-            data["pressure_bar"],
-            "bar"
+            "Published to:",
+            OUTPUT_TOPIC
         )
 
-        print(
-            "Air Flow        :",
-            data["flow_rate_lpm"],
-            "L/min"
-        )
-
-        print(
-            "Temperature     :",
-            data["temperature_c"],
-            "°C"
-        )
-
-        print(
-            "Power           :",
-            data["power_kw"],
-            "kW"
-        )
-
-        print("-" * 45)
+        print("==============================\n")
 
 
     except Exception as e:
 
         print(
-            "Prediction error:",
+            "AI prediction error:",
             e
         )
 
 
-# ==========================================
+# =========================================================
 # MQTT CLIENT
-# ==========================================
+# =========================================================
 
 client = mqtt.Client(
-
     mqtt.CallbackAPIVersion.VERSION2,
-
-    client_id=
-        "compressed-air-ml-predictor"
-
+    client_id="compressed-air-ai-predictor"
 )
 
+
+# =========================================================
+# LOGIN
+# =========================================================
 
 client.username_pw_set(
-
     MQTT_USERNAME,
-
     MQTT_PASSWORD
-
 )
 
 
-# ==========================================
+# =========================================================
 # TLS
-# ==========================================
+# =========================================================
 
 client.tls_set(
-
     cert_reqs=ssl.CERT_REQUIRED,
-
-    tls_version=
-        ssl.PROTOCOL_TLS_CLIENT
-
+    tls_version=ssl.PROTOCOL_TLS_CLIENT
 )
 
+
+# =========================================================
+# RECONNECT SETTINGS
+# =========================================================
+
+client.reconnect_delay_set(
+    min_delay=1,
+    max_delay=30
+)
+
+
+# =========================================================
+# CALLBACKS
+# =========================================================
+
+client.on_connect = on_connect
+
+client.on_disconnect = on_disconnect
 
 client.on_message = on_message
 
 
-# ==========================================
+# =========================================================
 # CONNECT
-# ==========================================
+# =========================================================
 
-print(
-    "Connecting to HiveMQ Cloud..."
-)
+print("Connecting to HiveMQ Cloud...")
 
 client.connect(
-
     MQTT_BROKER,
-
     MQTT_PORT,
-
     keepalive=60
-
 )
 
 
-print(
-    "Connected to HiveMQ Cloud!"
-)
+# =========================================================
+# START LOOP
+# =========================================================
 
-
-# ==========================================
-# SUBSCRIBE
-# ==========================================
-
-client.subscribe(
-    INPUT_TOPIC
-)
-
-
-print(
-    "Subscribed to:",
-    INPUT_TOPIC
-)
-
-
-print(
-    "AI/ML predictor is running..."
-)
-
-
-print("-" * 60)
-
-
-# ==========================================
-# KEEP RUNNING
-# ==========================================
+print("AI Prediction service started.")
 
 client.loop_forever()
