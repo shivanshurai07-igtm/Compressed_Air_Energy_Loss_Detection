@@ -359,7 +359,7 @@ with st.sidebar:
 # LIVE DASHBOARD
 # =========================================================
 
-@st.fragment(run_every="3s")
+@st.fragment(run_every="5s")
 def live_dashboard():
 
     with mqtt_data["lock"]:
@@ -704,6 +704,7 @@ def live_dashboard():
                 margin=dict(l=10, r=10, t=38, b=10),
                 title=dict(text=title, x=0.01, font=dict(size=16)),
                 template="plotly_dark",
+                uirevision="live",
                 hovermode="x unified",
                 showlegend=(baseline is not None or bool(thresholds)),
                 legend=dict(orientation="h", y=1.08, x=0),
@@ -735,7 +736,7 @@ def live_dashboard():
 
         st.caption(
             f"Live trend window: last {GRAPH_WINDOW_MINUTES} minutes • "
-            f"Updates automatically every 3 seconds"
+            f"Updates automatically every 5 seconds"
         )
 
         # Full-width charts, one per row — closer to the Node-RED trend layout.
