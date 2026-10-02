@@ -359,7 +359,7 @@ with st.sidebar:
 # LIVE DASHBOARD
 # =========================================================
 
-@st.fragment(run_every="5s")
+@st.fragment(run_every="3s")
 def live_dashboard():
 
     with mqtt_data["lock"]:
@@ -702,12 +702,20 @@ def live_dashboard():
                 pad = span * 0.18
                 y_range = [vmin - pad, vmax + pad]
 
+            # Keep Plotly's visual state stable while allowing only the data
+            # to change when a new MQTT reading arrives.  A stable uirevision
+            # prevents the chart from resetting its zoom/interaction state,
+            # while datarevision tells Plotly that the trace data changed.
+            latest_revision = str(data.index.max().value)
+
             fig.update_layout(
                 height=360,
                 margin=dict(l=10, r=10, t=38, b=10),
                 title=dict(text=title, x=0.01, font=dict(size=16)),
                 template="plotly_dark",
-                uirevision="live",
+                uirevision=f"live-{column}",
+                datarevision=latest_revision,
+                transition=dict(duration=0),
                 hovermode="x unified",
                 showlegend=(baseline is not None or bool(thresholds)),
                 legend=dict(orientation="h", y=1.08, x=0),
@@ -739,7 +747,7 @@ def live_dashboard():
 
         st.caption(
             f"Live trend window: last {GRAPH_WINDOW_MINUTES} minutes • "
-            f"Updates automatically every 5 seconds"
+            f"Updates automatically every 3 seconds"
         )
 
         # Full-width charts, one per row — closer to the Node-RED trend layout.
