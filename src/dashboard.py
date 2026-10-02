@@ -1,4 +1,4 @@
-import streamlit as st
+mport streamlit as st
 import paho.mqtt.client as mqtt
 import json
 import ssl
@@ -359,7 +359,6 @@ with st.sidebar:
 # LIVE DASHBOARD
 # =========================================================
 
-@st.fragment(run_every="5s")
 def live_dashboard():
 
     with mqtt_data["lock"]:
@@ -705,6 +704,7 @@ def live_dashboard():
                 title=dict(text=title, x=0.01, font=dict(size=16)),
                 template="plotly_dark",
                 uirevision="live",
+                transition_duration=0,
                 hovermode="x unified",
                 showlegend=(baseline is not None or bool(thresholds)),
                 legend=dict(orientation="h", y=1.08, x=0),
