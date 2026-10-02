@@ -359,6 +359,7 @@ with st.sidebar:
 # LIVE DASHBOARD
 # =========================================================
 
+@st.fragment(run_every="5s")
 def live_dashboard():
 
     with mqtt_data["lock"]:
@@ -684,18 +685,21 @@ def live_dashboard():
                         )
                     )
 
-            vmin = float(values.min())
-            vmax = float(values.max())
-            span = max(vmax - vmin, abs(vmax) * 0.08, 0.5)
-            pad = span * 0.18
+            # Keep a stable Y-axis so the chart does not visually jump on every refresh.
+            fixed_ranges = {
+                "energy_loss_percent": [0, 100],
+                "pressure_bar": [0, 10],
+                "flow_rate_lpm": [0, 200],
+                "temperature_c": [0, 50],
+                "power_kw": [0, 5],
+            }
+            y_range = fixed_ranges.get(column)
 
-            if baseline is not None:
-                low = min(vmin, baseline)
-                high = max(vmax, baseline)
-                span = max(high - low, 1.0)
-                pad = span * 0.15
-                y_range = [low - pad, high + pad]
-            else:
+            if y_range is None:
+                vmin = float(values.min())
+                vmax = float(values.max())
+                span = max(vmax - vmin, abs(vmax) * 0.08, 0.5)
+                pad = span * 0.18
                 y_range = [vmin - pad, vmax + pad]
 
             fig.update_layout(
@@ -704,7 +708,6 @@ def live_dashboard():
                 title=dict(text=title, x=0.01, font=dict(size=16)),
                 template="plotly_dark",
                 uirevision="live",
-                transition_duration=0,
                 hovermode="x unified",
                 showlegend=(baseline is not None or bool(thresholds)),
                 legend=dict(orientation="h", y=1.08, x=0),
